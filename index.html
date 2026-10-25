@@ -19,7 +19,17 @@
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:16px;line-height:1.6;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 40px}
-.wrap{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+html,body{min-height:100%}
+.wrap{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:20px;align-items:stretch}
+.wrap>*{min-width:0}
+@media (min-width:860px){
+  body{font-size:18px;padding-block:48px 56px}
+  .wrap{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px}
+  header,.note,.credit{grid-column:1/-1}
+  header h1{font-size:2.4rem!important}
+  .big .num{font-size:3.4rem!important}
+  .compare b{font-size:1.8rem!important}
+}
 header h1{margin:0;font-size:1.6rem;line-height:1.3;text-wrap:balance}
 header p{margin:4px 0 0;color:var(--muted);font-size:.92rem}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:16px}
@@ -52,18 +62,32 @@ input:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);ou
 .row b{font-variant-numeric:tabular-nums;font-weight:500}
 .note{font-size:.82rem;color:var(--muted);line-height:1.7}
 .note b{color:var(--fg);font-weight:500}
+.credit{justify-self:end;font-size:.75rem;color:var(--muted);text-decoration:none;opacity:.85}
+.credit span{color:var(--accent)}
+.credit:hover{opacity:1}
 </style>
 
 <div class="wrap" dir="rtl">
   <header>
     <h1>كم ستصبح فاتورة الكهرباء؟</h1>
-    <p>حسب التعرفة الجديدة للقطاع السكني</p>
+    <p>حسب التعرفة الجديدة لجميع القطاعات</p>
   </header>
 
   <section class="panel">
     <div class="seg" role="group" aria-label="طريقة الإدخال">
       <button id="m-bill" aria-pressed="true">قيمة الفاتورة</button>
       <button id="m-kwh" aria-pressed="false">الاستهلاك</button>
+    </div>
+    <div>
+      <label for="sector">القطاع</label>
+      <select id="sector">
+        <option value="res" selected>السكني</option>
+        <option value="com">التجاري والمنشآت الصحية والتعليمية الأهلية</option>
+        <option value="ind">الصناعي</option>
+        <option value="agr">الزراعي</option>
+        <option value="cha">الجمعيات الخيرية</option>
+        <option value="gov">الحكومي</option>
+      </select>
     </div>
     <div>
       <label for="val" id="val-label">قيمة فاتورتك الحالية الشهرية</label>
@@ -104,37 +128,55 @@ input:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);ou
   </section>
 
   <p class="note">
-    <b>التعرفة القديمة:</b> 18 هللة حتى 6000 ك.و.س، و30 هللة لما زاد. رسم العداد 10 إلى 30 ريال حسب القاطع.<br>
-    <b>التعرفة الجديدة:</b> 21 هللة حتى 6000 ك.و.س، و33 هللة لما زاد. رسم العداد 70 / 80 / 90 / 100 ريال حسب القاطع.<br>
-    النتائج تقديرية ولا تشمل أي رسوم أو خصومات أخرى في الفاتورة.
+    <b>التعرفة القديمة:</b> <span id="old-rate"></span><br>
+    <b>التعرفة الجديدة:</b> <span id="new-rate"></span><br>
+    التعرفة الجديدة حسب جدول السعودية للطاقة. النتائج تقديرية ولا تشمل أي رسوم أو خصومات أخرى في الفاتورة.
   </p>
+  <a class="credit" href="https://www.tiktok.com/@tik1_tak1_tok1" target="_blank" rel="noopener">
+    إعداد: ماضي الربيعان · <span dir="ltr">@tik1_tak1_tok1</span>
+  </a>
 </div>
 
 <script>
-const OLD_FEE=[10,15,21,22,25,30], NEW_FEE=[70,80,90,100,100,100];
-const energy=(k,a,b)=>k<=6000?k*a:6000*a+(k-6000)*b;
+const OLD_FEE=[10,15,21,22,25,30];
+const NEW_FEE={low:[70,80,90,100,100,100], mid:[140,160,180,200,200,200], high:[350,500,700,900,900,900]};
+// rates in SAR/kWh: [first 6000, above 6000]
+const SECTORS={
+  res:{old:[.18,.30], neu:[.21,.33], fee:"low"},
+  com:{old:[.22,.32], neu:[.25,.35], fee:"high"},
+  ind:{old:[.18,.18], neu:[.23,.23], fee:"high"},
+  agr:{old:[.16,.20], neu:[.19,.23], fee:"mid"},
+  cha:{old:[.16,.20], neu:[.17,.21], fee:"mid"},
+  gov:{old:[.32,.32], neu:[.35,.35], fee:"high"}
+};
+const energy=(k,[a,b])=>k<=6000?k*a:6000*a+(k-6000)*b;
+const h=r=>Math.round(r*100);
+const rateText=([a,b])=>a===b?h(a)+" هللة لكل الاستهلاك":h(a)+" هللة حتى 6000 ك.و.س، و"+h(b)+" لما زاد";
 let mode="bill";
 const $=id=>document.getElementById(id);
 const fmt=n=>n.toLocaleString("ar-SA",{maximumFractionDigits:0});
 const sar=n=>fmt(n)+" ريال";
 
-function kwhFromOldBill(bill,fee,vat){
+function kwhFromOldBill(bill,fee,vat,[a,b]){
   const pre=bill/vat-fee; if(pre<=0) return 0;
-  return pre<=1080? pre/0.18 : 6000+(pre-1080)/0.30;
+  return pre<=6000*a? pre/a : 6000+(pre-6000*a)/b;
 }
 function calc(){
   const v=parseFloat($("val").value), i=+$("amp").value, vat=$("vat").checked?1.15:1;
+  const s=SECTORS[$("sector").value], nf=NEW_FEE[s.fee][i];
+  $("old-rate").textContent=rateText(s.old)+"، ورسم العداد "+OLD_FEE[i]+" ريال.";
+  $("new-rate").textContent=rateText(s.neu)+"، ورسم العداد "+nf+" ريال.";
   if(!(v>0)){["diff","old","new","kwh","fee","year"].forEach(id=>$(id).textContent="—");$("diff-sub").textContent="";return}
-  const kwh = mode==="bill" ? kwhFromOldBill(v,OLD_FEE[i],vat) : v;
-  const oldB=(energy(kwh,.18,.30)+OLD_FEE[i])*vat;
-  const newB=(energy(kwh,.21,.33)+NEW_FEE[i])*vat;
+  const kwh = mode==="bill" ? kwhFromOldBill(v,OLD_FEE[i],vat,s.old) : v;
+  const oldB=(energy(kwh,s.old)+OLD_FEE[i])*vat;
+  const newB=(energy(kwh,s.neu)+nf)*vat;
   const d=newB-oldB;
   $("diff").textContent="+ "+sar(d);
   $("diff-sub").textContent="ارتفاع بنسبة "+fmt(d/oldB*100)+"%";
   $("old").textContent=sar(oldB);
   $("new").textContent=sar(newB);
   $("kwh").textContent=fmt(kwh)+" ك.و.س";
-  $("fee").textContent=OLD_FEE[i]+" ← "+NEW_FEE[i]+" ريال";
+  $("fee").textContent=OLD_FEE[i]+" ← "+nf+" ريال";
   $("year").textContent=sar(d*12);
 }
 function setMode(m){
@@ -148,6 +190,6 @@ function setMode(m){
 }
 $("m-bill").onclick=()=>setMode("bill");
 $("m-kwh").onclick=()=>setMode("kwh");
-["val","amp","vat"].forEach(id=>$(id).addEventListener("input",calc));
+["val","amp","vat","sector"].forEach(id=>$(id).addEventListener("input",calc));
 calc();
 </script>
