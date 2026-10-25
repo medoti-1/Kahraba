@@ -1,0 +1,153 @@
+<title>حاسبة فاتورة الكهرباء</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&display=swap">
+<style>
+/* Layout: single narrow column — input panel, then a meter-style result readout */
+@font-face{font-family:"Thmanyah";src:local("Thmanyah Sans"),local("Thmanyah"),local("thmanyahsans-Regular");font-weight:400}
+@font-face{font-family:"Thmanyah";src:local("Thmanyah Sans Bold"),local("thmanyahsans-Bold");font-weight:700}
+:root{
+  --bg:#eef3f8; --surface:#ffffff; --fg:#0b2140; --muted:#5a6b82; --line:#d6e0eb;
+  --accent:#0a5bd8; --accent-soft:#e3edfc; --up:#c2410c; --up-soft:#fdeee6; --ok:#0f8a5f;
+  --font:"Thmanyah","IBM Plex Sans Arabic",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#08131f; --surface:#0f1f31; --fg:#e8f0f9; --muted:#93a5bb; --line:#1f344c;
+  --accent:#5b9cff; --accent-soft:#132d50; --up:#ff8a5c; --up-soft:#3a1d12; --ok:#3ccf95; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#08131f; --surface:#0f1f31; --fg:#e8f0f9; --muted:#93a5bb; --line:#1f344c;
+  --accent:#5b9cff; --accent-soft:#132d50; --up:#ff8a5c; --up-soft:#3a1d12; --ok:#3ccf95; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:16px;line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 40px}
+.wrap{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+header h1{margin:0;font-size:1.6rem;line-height:1.3;text-wrap:balance}
+header p{margin:4px 0 0;color:var(--muted);font-size:.92rem}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:16px}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--bg);border-radius:10px;padding:4px;gap:4px}
+.seg button{font:inherit;border:0;border-radius:8px;padding:10px;background:transparent;color:var(--muted);cursor:pointer;font-weight:500}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+label{display:block;font-size:.9rem;color:var(--muted);margin-bottom:6px}
+.field{position:relative}
+input,select{width:100%;font:inherit;font-size:1.3rem;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--fg);font-variant-numeric:tabular-nums}
+select{font-size:1rem}
+.unit{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.9rem;pointer-events:none}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.check{display:flex;align-items:center;gap:8px;font-size:.92rem;color:var(--muted)}
+.check input{width:18px;height:18px}
+.result{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.big{padding:20px 18px;background:var(--up-soft);display:flex;flex-direction:column;gap:2px}
+.big .lbl{color:var(--up);font-size:.9rem;font-weight:500}
+.big .num{font-size:2.4rem;font-weight:700;color:var(--up);font-variant-numeric:tabular-nums;line-height:1.2}
+.big .sub{color:var(--fg);font-size:.95rem}
+.compare{display:grid;grid-template-columns:1fr 1fr}
+.compare div{padding:14px 18px;display:flex;flex-direction:column}
+.compare div+div{border-inline-start:1px solid var(--line)}
+.compare span{color:var(--muted);font-size:.85rem}
+.compare b{font-size:1.4rem;font-variant-numeric:tabular-nums}
+.compare .new b{color:var(--accent)}
+.rows{border-top:1px solid var(--line);padding:6px 18px 12px}
+.row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px dashed var(--line);font-size:.93rem}
+.row:last-child{border-bottom:0}
+.row span{color:var(--muted)}
+.row b{font-variant-numeric:tabular-nums;font-weight:500}
+.note{font-size:.82rem;color:var(--muted);line-height:1.7}
+.note b{color:var(--fg);font-weight:500}
+</style>
+
+<div class="wrap" dir="rtl">
+  <header>
+    <h1>كم ستصبح فاتورة الكهرباء؟</h1>
+    <p>حسب التعرفة الجديدة للقطاع السكني</p>
+  </header>
+
+  <section class="panel">
+    <div class="seg" role="group" aria-label="طريقة الإدخال">
+      <button id="m-bill" aria-pressed="true">قيمة الفاتورة</button>
+      <button id="m-kwh" aria-pressed="false">الاستهلاك</button>
+    </div>
+    <div>
+      <label for="val" id="val-label">قيمة فاتورتك الحالية الشهرية</label>
+      <div class="field">
+        <input id="val" type="number" inputmode="decimal" min="0" value="550">
+        <span class="unit" id="val-unit">ريال</span>
+      </div>
+    </div>
+    <div>
+      <label for="amp">سعة القاطع (مكتوبة في الفاتورة)</label>
+      <select id="amp">
+        <option value="0" selected>من 20 إلى 99 أمبير</option>
+        <option value="1">من 100 إلى 199 أمبير</option>
+        <option value="2">من 200 إلى 299 أمبير</option>
+        <option value="3">من 300 إلى 399 أمبير</option>
+        <option value="4">400 أمبير</option>
+        <option value="5">أكثر من 400 أمبير</option>
+      </select>
+    </div>
+    <label class="check"><input id="vat" type="checkbox" checked> احسب ضريبة القيمة المضافة 15%</label>
+  </section>
+
+  <section class="result" aria-live="polite">
+    <div class="big">
+      <span class="lbl">الزيادة الشهرية</span>
+      <span class="num" id="diff">—</span>
+      <span class="sub" id="diff-sub"></span>
+    </div>
+    <div class="compare">
+      <div><span>الفاتورة القديمة</span><b id="old">—</b></div>
+      <div class="new"><span>الفاتورة الجديدة</span><b id="new">—</b></div>
+    </div>
+    <div class="rows">
+      <div class="row"><span>الاستهلاك الشهري</span><b id="kwh">—</b></div>
+      <div class="row"><span>رسم العداد: قديم ← جديد</span><b id="fee">—</b></div>
+      <div class="row"><span>الزيادة في السنة</span><b id="year">—</b></div>
+    </div>
+  </section>
+
+  <p class="note">
+    <b>التعرفة القديمة:</b> 18 هللة حتى 6000 ك.و.س، و30 هللة لما زاد. رسم العداد 10 إلى 30 ريال حسب القاطع.<br>
+    <b>التعرفة الجديدة:</b> 21 هللة حتى 6000 ك.و.س، و33 هللة لما زاد. رسم العداد 70 / 80 / 90 / 100 ريال حسب القاطع.<br>
+    النتائج تقديرية ولا تشمل أي رسوم أو خصومات أخرى في الفاتورة.
+  </p>
+</div>
+
+<script>
+const OLD_FEE=[10,15,21,22,25,30], NEW_FEE=[70,80,90,100,100,100];
+const energy=(k,a,b)=>k<=6000?k*a:6000*a+(k-6000)*b;
+let mode="bill";
+const $=id=>document.getElementById(id);
+const fmt=n=>n.toLocaleString("ar-SA",{maximumFractionDigits:0});
+const sar=n=>fmt(n)+" ريال";
+
+function kwhFromOldBill(bill,fee,vat){
+  const pre=bill/vat-fee; if(pre<=0) return 0;
+  return pre<=1080? pre/0.18 : 6000+(pre-1080)/0.30;
+}
+function calc(){
+  const v=parseFloat($("val").value), i=+$("amp").value, vat=$("vat").checked?1.15:1;
+  if(!(v>0)){["diff","old","new","kwh","fee","year"].forEach(id=>$(id).textContent="—");$("diff-sub").textContent="";return}
+  const kwh = mode==="bill" ? kwhFromOldBill(v,OLD_FEE[i],vat) : v;
+  const oldB=(energy(kwh,.18,.30)+OLD_FEE[i])*vat;
+  const newB=(energy(kwh,.21,.33)+NEW_FEE[i])*vat;
+  const d=newB-oldB;
+  $("diff").textContent="+ "+sar(d);
+  $("diff-sub").textContent="ارتفاع بنسبة "+fmt(d/oldB*100)+"%";
+  $("old").textContent=sar(oldB);
+  $("new").textContent=sar(newB);
+  $("kwh").textContent=fmt(kwh)+" ك.و.س";
+  $("fee").textContent=OLD_FEE[i]+" ← "+NEW_FEE[i]+" ريال";
+  $("year").textContent=sar(d*12);
+}
+function setMode(m){
+  mode=m;
+  $("m-bill").setAttribute("aria-pressed",m==="bill");
+  $("m-kwh").setAttribute("aria-pressed",m==="kwh");
+  $("val-label").textContent= m==="bill"?"قيمة فاتورتك الحالية الشهرية":"استهلاكك الشهري";
+  $("val-unit").textContent= m==="bill"?"ريال":"ك.و.س";
+  $("val").value= m==="bill"?550:2600;
+  calc();
+}
+$("m-bill").onclick=()=>setMode("bill");
+$("m-kwh").onclick=()=>setMode("kwh");
+["val","amp","vat"].forEach(id=>$(id).addEventListener("input",calc));
+calc();
+</script>
